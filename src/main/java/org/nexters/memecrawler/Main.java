@@ -18,16 +18,14 @@ public class Main {
             
             // 2단계: 각 링크의 원시 데이터 크롤링
             List<Map<String, Object>> rawDataList = new ArrayList<>();
-            for (String link : memeLinks) {
+            System.out.println("Starting to crawl " + memeLinks.size() + " meme pages...");
+            
+            for (int i = 0; i < memeLinks.size(); i++) {
+                String link = memeLinks.get(i);
                 try {
+                    System.out.println("Progress: " + (i + 1) + "/" + memeLinks.size() + " - " + link);
                     Map<String, Object> rawData = crawler.crawlRawMemeData(link);
                     rawDataList.add(rawData);
-                    
-                    // 너무 많은 데이터를 한 번에 크롤링하지 않도록 제한 (테스트용)
-                    if (rawDataList.size() >= 10) {
-                        System.out.println("Limited to first 10 memes for testing");
-                        break;
-                    }
                 } catch (Exception e) {
                     System.err.println("Error crawling " + link + ": " + e.getMessage());
                 }
