@@ -75,11 +75,13 @@ Allow: /cdn-cgi/
 ```
 
 ## 전체 어플리케이션 파이프라인
-1. 크롤링 : `https://namu.wiki/w/%EB%B0%88(%EC%9D%B8%ED%84%B0%EB%84%B7%20%EC%9A%A9%EC%96%B4)/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD` 페이지에 하이퍼링크가 존재하는 데이터를 1차 크롤링한다.
-2. 데이터 저장 : 크롤링한 데이터를 JSON 형식으로 저장한다.
-3. 구조화 : 의미 없는 html 태그를 제거하고, 밈의 메타데이터를 추출하여 구조화한다.
-4. 분석 : Google Vertex AI를 활용하여 밈의 유행 정도, 기원 등을 분석하여 하위의 구조화 가능한 데이터 형태로 구조화한다.
-5. 저장 : 구조화된 데이터를 JSON 형식으로 저장한다.
+1. **1차 크롤링** : `https://namu.wiki/w/%EB%B0%88(%EC%9D%B8%ED%84%B0%EB%84%B7%20%EC%9A%A9%EC%96%B4)/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD` 페이지에서 하이퍼링크 목록을 추출
+2. **메타데이터 저장** : 추출한 링크들을 `raw_meme_data.json`에 저장
+3. **2차 상세 크롤링** : `raw_meme_data.json`의 각 URL에 접속하여 전체 페이지 데이터를 크롤링
+4. **개별 파일 저장** : 각 밈의 상세 데이터를 `detailed_meme_data/` 디렉토리에 title 기반 파일명으로 저장
+5. **구조화** : 의미 없는 html 태그를 제거하고, 밈의 메타데이터를 추출하여 구조화
+6. **분석** : Google Vertex AI를 활용하여 밈의 유행 정도, 기원 등을 분석하여 구조화된 데이터 형태로 변환
+7. **최종 저장** : 구조화된 데이터를 JSON 형식으로 저장
 
 ## 개발 가이드라인
 크롤링 한 데이터를 저장하는 형식은 JSON으로 하며, 각 밈의 메타데이터를 포함해야 한다.
@@ -96,8 +98,32 @@ Google Vertex AI를 활용하여 이를 분석하고, 아래의 구조화된 형
 - 밈의 나무위키 출처
 - 밈의 관련 키워드
 
-## 크롤링 모듈
-- 대상 URL:`https://namu.wiki/w/%EB%B0%88(%EC%9D%B8%ED%84%B0%EB%84%B7%20%EC%9A%A9%EC%96%B4)/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD` 
-- 내부의 하이퍼링크를 통해 크롤링한다.
-- Rate Limiting: (2초당 1회 요청으로 설정)
-- 크롤링한 데이터는 JSON 형식으로 저장한다.
+## 크롤링 실행 방법
+
+### 1차 크롤링 (링크 목록 추출)
+```bash
+./gradlew run
+# 또는 IDE에서 Main.java 실행
+```
+- 결과: `raw_meme_data.json` 파일 생성
+- 포함 데이터: URL, 제목, 기본 컨텐츠, 이미지 목록
+
+### 2차 상세 크롤링 (개별 페이지 전체 데이터)
+```bash
+# DetailedMemeCrawler.java 실행
+```
+- 전제조건: `raw_meme_data.json` 파일 존재
+- 결과: `detailed_meme_data/` 디렉토리에 개별 JSON 파일들 생성
+- 파일명: 밈 제목을 기반으로 sanitize된 파일명 사용
+- 포함 데이터: 
+  - 전체 HTML 콘텐츠
+  - 메타 태그들
+  - 모든 이미지 정보 (src, alt, title)
+  - 모든 링크 정보 (href, text, title)
+  - 헤딩 구조 (h1-h6)
+  - 크롤링 시간
+
+### 크롤링 설정
+- Rate Limiting: 0.5초당 1회 요청
+- Timeout: 15초
+- User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
