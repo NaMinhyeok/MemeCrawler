@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(./gradlew:*)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(chmod:*)",
+      "Bash(echo $SHELL)",
+      "Bash(cp:*)",
+      "Bash(./test-gemini-api.sh:*)",
+      "Bash(rm:*)",
+      "Bash(source:*)",
+      "Bash(java:*)",
+      "Bash(pkill:*)",
+      "WebFetch(domain:ai.google.dev)"
     ],
     "deny": []
   }
