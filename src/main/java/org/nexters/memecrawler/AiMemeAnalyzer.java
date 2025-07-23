@@ -107,7 +107,86 @@ public class AiMemeAnalyzer {
             **중요**: 대부분의 밈은 1-3점 사이입니다. 4-5점은 정말 예외적인 경우에만 사용하세요.
     """;
 
+    /**
+     * 기존 JSON 파일들로부터 CSV를 재생성하는 독립 실행 메서드
+     */
+    public static void regenerateCsvFromExistingJson() {
+        try {
+            System.out.println("=== CSV 재생성 시작 ===");
+            
+            Path jsonDir = Paths.get("analyzed_meme_data_json");
+            if (!Files.exists(jsonDir)) {
+                System.err.println("analyzed_meme_data_json 디렉토리가 존재하지 않습니다.");
+                return;
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            StringBuilder csvContent = new StringBuilder();
+            
+            // CSV 헤더 작성
+            csvContent.append("title,description,origin,popularity_score,popularity_period,popularity_region,related_memes,keywords,hashtags,category,source_url,media_urls\n");
+
+            int successCount = 0;
+            int failCount = 0;
+            
+            // JSON 디렉토리의 모든 JSON 파일 처리
+            try (Stream<Path> paths = Files.walk(jsonDir)) {
+                for (Path jsonFile : paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".json"))
+                    .toList()) {
+                    
+                    try {
+                        String jsonContent = Files.readString(jsonFile);
+                        JsonNode node = mapper.readTree(jsonContent);
+
+                        String[] fields = {
+                            escapeCSV(getFieldValue(node, "title")),
+                            escapeCSV(getFieldValue(node, "description")),
+                            escapeCSV(getFieldValue(node, "origin")),
+                            escapeCSV(getFieldValue(node, "popularity_score")),
+                            escapeCSV(getFieldValue(node, "popularity_period")),
+                            escapeCSV(getFieldValue(node, "popularity_region")),
+                            escapeCSV(getFieldValue(node, "related_memes")),
+                            escapeCSV(getFieldValue(node, "keywords")),
+                            escapeCSV(getFieldValue(node, "hashtags")),
+                            escapeCSV(getFieldValue(node, "category")),
+                            escapeCSV(getFieldValue(node, "source_url")),
+                            escapeCSV(getFieldValue(node, "media_urls"))
+                        };
+
+                        csvContent.append(String.join(",", fields)).append("\n");
+                        successCount++;
+                        
+                        System.out.println("✅ 처리 완료: " + jsonFile.getFileName());
+
+                    } catch (Exception e) {
+                        failCount++;
+                        System.err.println("❌ 처리 실패: " + jsonFile.getFileName() + " - " + e.getMessage());
+                    }
+                }
+            }
+
+            // CSV 파일 저장
+            Path csvFile = Paths.get("meme_analysis_results_regenerated.csv");
+            Files.write(csvFile, csvContent.toString().getBytes());
+
+            System.out.println("\n=== CSV 재생성 완료 ===");
+            System.out.printf("✅ 성공: %d개%n", successCount);
+            System.out.printf("❌ 실패: %d개%n", failCount);
+            System.out.printf("📄 출력 파일: %s%n", csvFile.toAbsolutePath());
+
+        } catch (Exception e) {
+            System.err.println("CSV 재생성 오류: " + e.getMessage());
+        }
+    }
+
     public static void main(String[] args) {
+        // 인자에 따라 다른 동작 수행
+        if (args.length > 0 && "regenerate-csv".equals(args[0])) {
+            regenerateCsvFromExistingJson();
+            return;
+        }
+        
         try {
             Path cleanTextDir = Paths.get("clean_text_data");
 
@@ -226,18 +305,18 @@ public class AiMemeAnalyzer {
                     JsonNode node = mapper.readTree(jsonResult);
 
                     String[] fields = {
-                        escapeCSV(node.path("title").asText()),
-                        escapeCSV(node.path("description").asText()),
-                        escapeCSV(node.path("origin").asText()),
-                        escapeCSV(node.path("popularity_score").asText()),
-                        escapeCSV(node.path("popularity_period").asText()),
-                        escapeCSV(node.path("popularity_region").asText()),
-                        escapeCSV(node.path("related_memes").asText()),
-                        escapeCSV(node.path("keywords").asText()),
-                        escapeCSV(node.path("hashtags").asText()),
-                        escapeCSV(node.path("category").asText()),
-                        escapeCSV(node.path("source_url").asText()),
-                        escapeCSV(node.path("media_urls").asText())
+                        escapeCSV(getFieldValue(node, "title")),
+                        escapeCSV(getFieldValue(node, "description")),
+                        escapeCSV(getFieldValue(node, "origin")),
+                        escapeCSV(getFieldValue(node, "popularity_score")),
+                        escapeCSV(getFieldValue(node, "popularity_period")),
+                        escapeCSV(getFieldValue(node, "popularity_region")),
+                        escapeCSV(getFieldValue(node, "related_memes")),
+                        escapeCSV(getFieldValue(node, "keywords")),
+                        escapeCSV(getFieldValue(node, "hashtags")),
+                        escapeCSV(getFieldValue(node, "category")),
+                        escapeCSV(getFieldValue(node, "source_url")),
+                        escapeCSV(getFieldValue(node, "media_urls"))
                     };
 
                     csvContent.append(String.join(",", fields)).append("\n");
@@ -260,8 +339,31 @@ public class AiMemeAnalyzer {
         }
     }
 
+    /**
+     * JSON 노드에서 필드 값을 안전하게 추출 (배열인 경우 문자열로 변환)
+     */
+    private static String getFieldValue(JsonNode node, String fieldName) {
+        JsonNode fieldNode = node.path(fieldName);
+        if (fieldNode.isMissingNode() || fieldNode.isNull()) {
+            return "정보 없음";
+        }
+        
+        if (fieldNode.isArray()) {
+            // 배열인 경우 쉼표로 구분된 문자열로 변환
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < fieldNode.size(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(fieldNode.get(i).asText());
+            }
+            return sb.toString();
+        }
+        
+        String value = fieldNode.asText();
+        return value.isEmpty() ? "정보 없음" : value;
+    }
+    
     private static String escapeCSV(String value) {
-        if (value == null) return "";
+        if (value == null || value.isEmpty()) return "정보 없음";
 
         // 따옴표, 쉽표, 줄바꿈이 있으면 따옴표로 감싸고 내부 따옴표를 이스케이프
         if (value.contains("\"") || value.contains(",") || value.contains("\n")) {
