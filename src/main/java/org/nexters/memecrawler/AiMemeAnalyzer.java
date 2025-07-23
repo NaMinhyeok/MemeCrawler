@@ -25,10 +25,15 @@ public class AiMemeAnalyzer {
 
     private static final int TEST_LIMIT = 10;
 
-    private static final int THREAD_POOL_SIZE = 4;
+    private static final int THREAD_POOL_SIZE = 10;
 
     // JSON 결과를 저장할 스레드 세이프 큐
     private static final ConcurrentLinkedQueue<String> jsonResults = new ConcurrentLinkedQueue<>();
+    
+    // 통계 추적을 위한 카운터들
+    private static final AtomicInteger successCount = new AtomicInteger(0);
+    private static final AtomicInteger failureCount = new AtomicInteger(0);
+    private static final AtomicInteger apiRetryCount = new AtomicInteger(0);
 
     private static final String ANALYSIS_PROMPT =
         """
@@ -43,9 +48,9 @@ public class AiMemeAnalyzer {
               "popularity_period": "유행 시기 (YYYY.MM 또는 YYYY.MM-YYYY.MM 또는 YYYY.MM-현재 형식 하지만 해당 형식으로 표현 하지 못할 경우 YYYY 형식으로 작성)",
               "popularity_region": "유행 지역 (국내/해외/글로벌 등)",
               "related_memes": "관련된 또는 파생된 밈들",
-              "keywords": "검색 키워드",
-              "hashtags": "해시태그",
-              "category": "밈 카테고리",
+              "keywords": "검색 키워드 (배열에 담는다)",
+              "hashtags": "해시태그 (배열에 담는다)",
+              "category": "밈 카테고리 (배열에 담는다)",
               "source_url": "나무위키 URL",
               "media_urls": "관련 이미지/동영상 URL (있는 경우)"
             }
@@ -122,7 +127,7 @@ public class AiMemeAnalyzer {
                     .count());
             }
 
-            System.out.println("총 " + total.get() + "개의 txt 파일을 발견했습니다. (테스트로 " + TEST_LIMIT + "개만 처리, 동시 스레드 " + THREAD_POOL_SIZE + "개)");
+            System.out.println("총 " + total.get() + "개의 txt 파일을 발견했습니다. (동시 스레드 " + THREAD_POOL_SIZE + "개)");
 
             // 커스텀 ForkJoinPool로 스레드 풀 크기 제한하여 병렬 처리
             ForkJoinPool customThreadPool = new ForkJoinPool(THREAD_POOL_SIZE);
@@ -132,11 +137,10 @@ public class AiMemeAnalyzer {
                         paths
                             .filter(Files::isRegularFile)
                             .filter(path -> path.toString().endsWith(".txt"))
-                            .limit(TEST_LIMIT)
                             .parallel() // 병렬 스트림 (커스텀 스레드 풀 사용)
                             .forEach(path -> {
                                 int current = counter.incrementAndGet();
-                                System.out.println("[" + current + "/" + TEST_LIMIT + "] 분석 시작: " + path.getFileName() + " (Thread: " + Thread.currentThread().getName() + ")");
+                                System.out.println("[" + current + "/" + total.get() + "] 분석 시작: " + path.getFileName() + " (Thread: " + Thread.currentThread().getName() + ")");
 
                                 try {
                                     // 파일 내용 읽기
@@ -154,11 +158,17 @@ public class AiMemeAnalyzer {
 
                                     // 개별 JSON 파일로도 저장 (정제된 JSON 저장)
                                     saveJsonAnalysis(path.getFileName().toString(), jsonResult);
-
-                                    System.out.println("완료: " + path.getFileName() + " (Thread: " + Thread.currentThread().getName() + ")");
+                                    
+                                    successCount.incrementAndGet();
+                                    System.out.printf("✅ [%d/%d] 완료: %s (성공:%d, 실패:%d, 재시도:%d)%n", 
+                                        current, total.get(), path.getFileName(), 
+                                        successCount.get(), failureCount.get(), apiRetryCount.get());
 
                                 } catch (Exception e) {
-                                    System.err.println("파일 처리 오류: " + path.getFileName() + " - " + e.getMessage());
+                                    failureCount.incrementAndGet();
+                                    System.err.printf("❌ [%d/%d] 실패: %s - %s (성공:%d, 실패:%d, 재시도:%d)%n", 
+                                        current, total.get(), path.getFileName(), e.getMessage(),
+                                        successCount.get(), failureCount.get(), apiRetryCount.get());
                                 }
                             });
                     } catch (Exception e) {
@@ -171,7 +181,14 @@ public class AiMemeAnalyzer {
                 customThreadPool.shutdown(); // 스레드 풀 정리
             }
 
-            System.out.println("모든 파일 분석이 완료되었습니다.");
+            // 최종 통계 출력
+            System.out.println("\n=== 분석 완료 ===");
+            System.out.printf("총 처리: %d개 파일%n", total.get());
+            System.out.printf("✅ 성공: %d개 (%.1f%%)%n", successCount.get(), 
+                (double)successCount.get() / total.get() * 100);
+            System.out.printf("❌ 실패: %d개 (%.1f%%)%n", failureCount.get(), 
+                (double)failureCount.get() / total.get() * 100);
+            System.out.printf("🔄 총 재시도 횟수: %d회%n", apiRetryCount.get());
 
             // 모든 JSON 결과를 CSV로 변환
             generateCsvFromJson();
@@ -283,24 +300,83 @@ public class AiMemeAnalyzer {
     }
 
     private static String analyzeMeme(String memeContent) {
-        Client client = Client.builder().apiKey(API_KEY).build();
+        int maxRetries = 3;
+        long retryDelayMs = 2000; // 2초 대기
+        
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try (Client client = Client.builder().apiKey(API_KEY).build()) {
+                if (attempt > 1) {
+                    System.out.println("🔄 API 호출 재시도 " + attempt + "/" + maxRetries + " (Thread: " + Thread.currentThread().getName() + ")");
+                }
+                
+                GenerateContentResponse response = client.models.generateContent(
+                    "gemini-2.5-flash",
+                    ANALYSIS_PROMPT + memeContent,
+                    GenerateContentConfig.builder()
+                        .temperature(0.7f)
+                        .systemInstruction(Content.builder()
+                            .parts(List.of(
+                                Part.builder()
+                                    .text(SYSTEM_INSTRUCTION)
+                                    .build()))
+                            .build())
+                        .build());
 
-        GenerateContentResponse response =
-            client.models.generateContent(
-                "gemini-2.5-pro",
-                ANALYSIS_PROMPT + memeContent,
-                GenerateContentConfig.builder()
-                    .temperature(0.7f)
-                    .systemInstruction(Content.builder()
-                        .parts(List.of(
-                            Part.builder()
-                                .text(
-                                    SYSTEM_INSTRUCTION
-                                )
-                                .build()))
-                        .build())
-                    .build());
-
-        return response.text();
+                return response.text();
+                
+            } catch (Exception e) {
+                apiRetryCount.incrementAndGet();
+                System.err.println("🔄 API 호출 실패 (시도 " + attempt + "/" + maxRetries + "): " + e.getMessage());
+                
+                if (attempt == maxRetries) {
+                    System.err.println("❌ 모든 재시도 실패, fallback JSON 반환");
+                    return createFallbackJson(memeContent);
+                }
+                
+                try {
+                    System.out.println("⏳ " + (retryDelayMs * attempt / 1000) + "초 대기 후 재시도...");
+                    Thread.sleep(retryDelayMs * attempt); // 지수 백오프
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return createFallbackJson(memeContent);
+                }
+            }
+        }
+        
+        return createFallbackJson(memeContent);
+    }
+    
+    /**
+     * API 호출 실패 시 기본적인 fallback JSON 생성
+     */
+    private static String createFallbackJson(String memeContent) {
+        // 내용에서 제목 추출 시도 (첫 번째 줄 또는 첫 번째 문장)
+        String title = "알 수 없는 밈";
+        if (memeContent != null && !memeContent.trim().isEmpty()) {
+            String[] lines = memeContent.split("\n");
+            if (lines.length > 0) {
+                String firstLine = lines[0].trim();
+                if (!firstLine.isEmpty() && firstLine.length() < 100) {
+                    title = firstLine;
+                }
+            }
+        }
+        
+        return String.format("""
+            {
+              "title": "%s",
+              "description": "API 호출 실패로 인해 자동 분석을 수행할 수 없었습니다.",
+              "origin": "정보 없음",
+              "popularity_score": "1",
+              "popularity_period": "정보 없음",
+              "popularity_region": "정보 없음",
+              "related_memes": "정보 없음",
+              "keywords": "정보 없음",
+              "hashtags": "정보 없음",
+              "category": "분석 실패",
+              "source_url": "정보 없음",
+              "media_urls": "정보 없음"
+            }
+            """, title.replace("\"", "\\\""));
     }
 }
