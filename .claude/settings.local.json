@@ -11,7 +11,9 @@
       "Bash(source:*)",
       "Bash(java:*)",
       "Bash(pkill:*)",
-      "WebFetch(domain:ai.google.dev)"
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(ls:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

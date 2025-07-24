@@ -35,24 +35,56 @@ public class AiMemeAnalyzer {
     private static final AtomicInteger failureCount = new AtomicInteger(0);
     private static final AtomicInteger apiRetryCount = new AtomicInteger(0);
 
+
     private static final String ANALYSIS_PROMPT =
         """
-            다음 내용을 분석하여 아래 JSON 스키마에 맞게 정확히 응답해주세요.
-            반드시 valid JSON 형식으로만 응답하고, 다른 설명이나 마크다운은 포함하지 마세요.
+            # Role
+            당신은 밈의 역사와 문화적 맥락을 깊이 이해하는 **'밈 문화 연구가'**입니다. 사용자가 밈의 배경과 재미를 충분히 이해할 수 있도록 풍부하고 상세한 설명을 담아 지정된 JSON 형식으로 데이터를 정리해야 합니다.
             
+            # Instruction
+            주어진 밈에 대해 분석하고, 반드시 아래에 정의된 JSON 구조와 예시를 참고하여 응답해야 합니다. 다른 설명 없이 JSON 데이터만 응답해주세요.
+            
+            # JSON Structure
             {
-              "title": "밈 제목",
-              "description": "밈 설명",
-              "origin": "밈의 기원이나 출처",
-              "popularity_score": "유행 정도 (1-5점)",
-              "popularity_period": "유행 시기 (YYYY.MM 또는 YYYY.MM-YYYY.MM 또는 YYYY.MM-현재 형식 하지만 해당 형식으로 표현 하지 못할 경우 YYYY 형식으로 작성)",
-              "popularity_region": "유행 지역 (국내/해외/글로벌 등)",
-              "related_memes": "관련된 또는 파생된 밈들",
-              "keywords": "검색 키워드 (배열에 담는다)",
-              "hashtags": "해시태그 (배열에 담는다)",
-              "category": "밈 카테고리 (배열에 담는다)",
-              "source_url": "나무위키 URL",
-              "media_urls": "관련 이미지/동영상 URL (있는 경우)"
+              "name": "밈의 공식 명칭 (String)",
+              "meaning": "밈의 핵심 의미를 1~3 문장으로 설명하되, 어떤 감정이나 상황을 나타내는지 **뉘앙스를 포함하여 서술**해주세요. (String)",
+              "usageExamples": [
+                "단순한 문장 나열이 아닌, **어떤 상황에서 사용하면 재미있는지 맥락이 드러나는** 예시를 2~3개 작성해주세요. (String)",
+                "예시 2",
+                "예시 3"
+              ],
+              "origin": "최초 출처와 함께, **어떤 과정과 계기를 통해 유행하게 되었는지 간략한 스토리를 포함**하여 서술해주세요. (String)",
+              "relatedMemes": [
+                "관련/파생 밈 이름 (String)",
+              ],
+              "tags": [
+                "밈의 특징과 카테고리를 잘 나타내는 키워드 5개 이상 (String)",
+                "키워드2",
+                "키워드3"
+              ]
+            }
+            
+            # Example (for '무야호' meme)
+            {
+              "name": "무야호",
+              "meaning": "단순한 기쁨을 넘어, 예상치 못한 행운이나 큰 성취감에 벅차올라 터져 나오는 순수한 환희를 표현합니다. 약간의 어설픔이 더해져 유머러스한 느낌을 줍니다.",
+              "usageExamples": [
+                "월급날 통장 보고 소리 질렀다... 이것이 바로 '무야호'의 심정.",
+                "친구가 노래방에서 최고점 찍고 '무야호' 외치는데 너무 웃겼어.",
+                "밤새 코딩한 거 에러 없이 돌아갈 때의 그 기분? 무야호 그 자체."
+              ],
+              "origin": "2010년 MBC <무한도전> '알래스카' 편에서 한 어르신이 '무한도전'을 '무야호'로 잘못 외친 장면에서 시작됐습니다. 이 순수한 외침이 10년이 지난 후 유튜브 알고리즘을 통해 재발견되어 폭발적으로 유행했습니다.",
+              "relatedMemes": [
+                  "그만큼 신나시다는 거지"
+              ],
+              "tags": [
+                "무한도전",
+                "정형돈",
+                "알래스카",
+                "신남",
+                "환호",
+                "감탄사"
+              ]
             }
             
             분석할 내용:
@@ -68,43 +100,7 @@ public class AiMemeAnalyzer {
             3. 시기 정보는 가능한 구체적으로 작성하세요
             4. 관련 키워드는 검색 최적화를 고려하여 포함하세요
             5. 불확실한 정보는 추측하지 말고 "정보 없음"으로 표기하세요
-        
-            밈 유행도 점수 기준 (매우 엄격하게 적용):
-        
-            **1점 (틈새 밈)**:\s
-            - 특정 소규모 커뮤니티에서만 사용 (회원 수 1만명 이하)
-            - 일반인이 전혀 모르는 밈
-            - 사용 기간 1개월 미만
-            - 예: 특정 게임의 매니아층에서만 쓰이는 밈
-
-            **2점 (커뮤니티 밈)**:
-            - 특정 대형 커뮤니티에서 유행 (디시 특정 갤러리, 특정 유튜버 팬덤 등)
-            - 해당 분야에 관심 있는 사람들은 알지만 일반인은 모름
-            - 사용 기간 1-3개월
-            - 예: 특정 게임 갤러리에서 유행한 밈, 특정 스트리머 방송에서 나온 밈
-
-            **3점 (온라인 밈)**:
-            - 여러 온라인 커뮤니티에서 확산 (디시 여러 갤러리, 레딧, 트위터 등)
-            - 인터넷을 자주 하는 사람들은 대부분 알고 있음
-            - 사용 기간 3-6개월, 패러디나 변형 버전 존재
-            - 예: 인터넷 밈으로 자리잡았지만 오프라인까지는 안 간 것들
-
-            **4점 (대중 밈)**:
-            - TV, 라디오 등 주류 미디어에서 언급
-            - 중장년층도 어느 정도 인지
-            - 연예인들이 사용하거나 광고에 활용
-            - 사용 기간 6개월 이상, 지속적인 변형과 재생산
-            - 예: "무야호", "극혐", "갓벽" 등
-
-            **5점 (사회 현상급)**:
-            - 전 연령층이 알고 있음 (부모님도 아는 수준)
-            - 뉴스에서 다룰 정도로 사회적 이슈가 됨
-            - 교육 현장, 정치, 광고 등에서 광범위하게 사용
-            - 사전에 등재되거나 학술적 연구 대상이 됨
-            - 사용 기간 1년 이상, 문화적 현상으로 정착
-            - 예: "대박", "헐", "ㅋㅋㅋ" 등 (극소수만 해당)
-
-            **중요**: 대부분의 밈은 1-3점 사이입니다. 4-5점은 정말 예외적인 경우에만 사용하세요.
+            6. 이미지 또는 영상으로 대표되는 밈인지 여부를 명확히 구분하고 표기하세요
     """;
 
     /**
@@ -123,8 +119,8 @@ public class AiMemeAnalyzer {
             ObjectMapper mapper = new ObjectMapper();
             StringBuilder csvContent = new StringBuilder();
             
-            // CSV 헤더 작성
-            csvContent.append("title,description,origin,popularity_score,popularity_period,popularity_region,related_memes,keywords,hashtags,category,source_url,media_urls\n");
+            // CSV 헤더 작성 (새로운 JSON 구조에 맞게)
+            csvContent.append("name,meaning,usageExamples,origin,relatedMemes,tags\n");
 
             int successCount = 0;
             int failCount = 0;
@@ -140,18 +136,12 @@ public class AiMemeAnalyzer {
                         JsonNode node = mapper.readTree(jsonContent);
 
                         String[] fields = {
-                            escapeCSV(getFieldValue(node, "title")),
-                            escapeCSV(getFieldValue(node, "description")),
+                            escapeCSV(mapFieldValue(node, "name", "title")),
+                            escapeCSV(mapFieldValue(node, "meaning", "description")),
+                            escapeCSV("정보 없음"), // usageExamples - 기존 데이터에 없음
                             escapeCSV(getFieldValue(node, "origin")),
-                            escapeCSV(getFieldValue(node, "popularity_score")),
-                            escapeCSV(getFieldValue(node, "popularity_period")),
-                            escapeCSV(getFieldValue(node, "popularity_region")),
-                            escapeCSV(getFieldValue(node, "related_memes")),
-                            escapeCSV(getFieldValue(node, "keywords")),
-                            escapeCSV(getFieldValue(node, "hashtags")),
-                            escapeCSV(getFieldValue(node, "category")),
-                            escapeCSV(getFieldValue(node, "source_url")),
-                            escapeCSV(getFieldValue(node, "media_urls"))
+                            escapeCSV(mapFieldValue(node, "relatedMemes", "related_memes")),
+                            escapeCSV(mapArrayFieldValue(node, "tags", "keywords", "hashtags"))
                         };
 
                         csvContent.append(String.join(",", fields)).append("\n");
@@ -225,8 +215,7 @@ public class AiMemeAnalyzer {
                                     // 파일 내용 읽기
                                     String content = Files.readString(path);
 
-
-                                    // AI로 분석 (제한된 병렬 처리)
+                                    // 밈 분석 (모든 데이터를 새 JSON 구조로 처리)
                                     String rawResult = analyzeMeme(content);
                                     
                                     // 마크다운 코드 블록 제거 및 JSON 추출
@@ -296,8 +285,8 @@ public class AiMemeAnalyzer {
             ObjectMapper mapper = new ObjectMapper();
             StringBuilder csvContent = new StringBuilder();
 
-            // CSV 헤더 작성
-            csvContent.append("title,description,origin,popularity_score,popularity_period,popularity_region,related_memes,keywords,hashtags,category,source_url,media_urls\n");
+            // CSV 헤더 작성 (새로운 JSON 구조에 맞게)
+            csvContent.append("name,meaning,usageExamples,origin,relatedMemes,tags\n");
 
             // 각 JSON 결과를 CSV 로우로 변환
             for (String jsonResult : jsonResults) {
@@ -305,18 +294,12 @@ public class AiMemeAnalyzer {
                     JsonNode node = mapper.readTree(jsonResult);
 
                     String[] fields = {
-                        escapeCSV(getFieldValue(node, "title")),
-                        escapeCSV(getFieldValue(node, "description")),
+                        escapeCSV(getFieldValue(node, "name")),
+                        escapeCSV(getFieldValue(node, "meaning")),
+                        escapeCSV(getArrayFieldAsString(node, "usageExamples")),
                         escapeCSV(getFieldValue(node, "origin")),
-                        escapeCSV(getFieldValue(node, "popularity_score")),
-                        escapeCSV(getFieldValue(node, "popularity_period")),
-                        escapeCSV(getFieldValue(node, "popularity_region")),
-                        escapeCSV(getFieldValue(node, "related_memes")),
-                        escapeCSV(getFieldValue(node, "keywords")),
-                        escapeCSV(getFieldValue(node, "hashtags")),
-                        escapeCSV(getFieldValue(node, "category")),
-                        escapeCSV(getFieldValue(node, "source_url")),
-                        escapeCSV(getFieldValue(node, "media_urls"))
+                        escapeCSV(getArrayFieldAsString(node, "relatedMemes")),
+                        escapeCSV(getArrayFieldAsString(node, "tags"))
                     };
 
                     csvContent.append(String.join(",", fields)).append("\n");
@@ -340,7 +323,53 @@ public class AiMemeAnalyzer {
     }
 
     /**
-     * JSON 노드에서 필드 값을 안전하게 추출 (배열인 경우 문자열로 변환)
+     * 기존 스키마 → 새 스키마 필드 매핑 (단일 값)
+     */
+    private static String mapFieldValue(JsonNode node, String newFieldName, String oldFieldName) {
+        // 먼저 새 필드명으로 시도
+        JsonNode newField = node.path(newFieldName);
+        if (!newField.isMissingNode() && !newField.isNull()) {
+            String value = newField.asText();
+            return value.isEmpty() ? "정보 없음" : value;
+        }
+        
+        // 새 필드가 없으면 기존 필드명으로 시도
+        JsonNode oldField = node.path(oldFieldName);
+        if (!oldField.isMissingNode() && !oldField.isNull()) {
+            String value = oldField.asText();
+            return value.isEmpty() ? "정보 없음" : value;
+        }
+        
+        return "정보 없음";
+    }
+    
+    /**
+     * 배열 필드 매핑 (keywords, hashtags, category 등을 tags로 통합)
+     */
+    private static String mapArrayFieldValue(JsonNode node, String newFieldName, String... oldFieldNames) {
+        // 먼저 새 필드명으로 시도
+        JsonNode newField = node.path(newFieldName);
+        if (!newField.isMissingNode() && !newField.isNull() && newField.isArray() && !newField.isEmpty()) {
+            return getArrayFieldAsString(node, newFieldName);
+        }
+        
+        // 기존 필드들을 순서대로 시도하고 결합
+        StringBuilder combined = new StringBuilder();
+        for (String oldFieldName : oldFieldNames) {
+            JsonNode oldField = node.path(oldFieldName);
+            if (!oldField.isMissingNode() && !oldField.isNull()) {
+                if (oldField.isArray() && !oldField.isEmpty()) {
+                    if (combined.length() > 0) combined.append(" | ");
+                    combined.append(getArrayFieldAsString(node, oldFieldName));
+                }
+            }
+        }
+        
+        return combined.length() > 0 ? combined.toString() : "정보 없음";
+    }
+
+    /**
+     * JSON 노드에서 필드 값을 안전하게 추출 (단일 값)
      */
     private static String getFieldValue(JsonNode node, String fieldName) {
         JsonNode fieldNode = node.path(fieldName);
@@ -348,18 +377,32 @@ public class AiMemeAnalyzer {
             return "정보 없음";
         }
         
-        if (fieldNode.isArray()) {
-            // 배열인 경우 쉼표로 구분된 문자열로 변환
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < fieldNode.size(); i++) {
-                if (i > 0) sb.append(", ");
-                sb.append(fieldNode.get(i).asText());
-            }
-            return sb.toString();
-        }
-        
         String value = fieldNode.asText();
         return value.isEmpty() ? "정보 없음" : value;
+    }
+    
+    /**
+     * 배열 필드를 문자열로 변환 (복합 객체 배열 포함)
+     */
+    private static String getArrayFieldAsString(JsonNode node, String fieldName) {
+        JsonNode fieldNode = node.path(fieldName);
+        if (fieldNode.isMissingNode() || fieldNode.isNull() || !fieldNode.isArray()) {
+            return "정보 없음";
+        }
+        
+        if (fieldNode.size() == 0) {
+            return "정보 없음";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < fieldNode.size(); i++) {
+            if (i > 0) sb.append(" | ");
+            
+            JsonNode item = fieldNode.get(i);
+            // 모든 배열 필드를 단순 문자열로 처리 (relatedMemes도 이제 문자열 배열)
+            sb.append(item.asText());
+        }
+        return sb.toString();
     }
     
     private static String escapeCSV(String value) {
@@ -401,21 +444,26 @@ public class AiMemeAnalyzer {
         return cleaned;
     }
 
+
+    /**
+     * 밈 분석 (모든 데이터를 새 JSON 구조로 처리)
+     * @return JSON 문자열
+     */
     private static String analyzeMeme(String memeContent) {
         int maxRetries = 3;
-        long retryDelayMs = 2000; // 2초 대기
+        long retryDelayMs = 2000;
         
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try (Client client = Client.builder().apiKey(API_KEY).build()) {
                 if (attempt > 1) {
-                    System.out.println("🔄 API 호출 재시도 " + attempt + "/" + maxRetries + " (Thread: " + Thread.currentThread().getName() + ")");
+                    System.out.println("🔄 API 호출 재시도 " + attempt + "/" + maxRetries);
                 }
                 
                 GenerateContentResponse response = client.models.generateContent(
                     "gemini-2.5-flash",
                     ANALYSIS_PROMPT + memeContent,
                     GenerateContentConfig.builder()
-                        .temperature(0.7f)
+                        .temperature(0.3f)
                         .systemInstruction(Content.builder()
                             .parts(List.of(
                                 Part.builder()
@@ -424,7 +472,9 @@ public class AiMemeAnalyzer {
                             .build())
                         .build());
 
-                return response.text();
+                String result = response.text();
+                if (result == null) result = "";
+                return result.trim();
                 
             } catch (Exception e) {
                 apiRetryCount.incrementAndGet();
@@ -437,7 +487,7 @@ public class AiMemeAnalyzer {
                 
                 try {
                     System.out.println("⏳ " + (retryDelayMs * attempt / 1000) + "초 대기 후 재시도...");
-                    Thread.sleep(retryDelayMs * attempt); // 지수 백오프
+                    Thread.sleep(retryDelayMs * attempt);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     return createFallbackJson(memeContent);
@@ -447,6 +497,7 @@ public class AiMemeAnalyzer {
         
         return createFallbackJson(memeContent);
     }
+
     
     /**
      * API 호출 실패 시 기본적인 fallback JSON 생성
@@ -466,18 +517,12 @@ public class AiMemeAnalyzer {
         
         return String.format("""
             {
-              "title": "%s",
-              "description": "API 호출 실패로 인해 자동 분석을 수행할 수 없었습니다.",
+              "name": "%s",
+              "meaning": "API 호출 실패로 인해 자동 분석을 수행할 수 없었습니다.",
+              "usageExamples": [],
               "origin": "정보 없음",
-              "popularity_score": "1",
-              "popularity_period": "정보 없음",
-              "popularity_region": "정보 없음",
-              "related_memes": "정보 없음",
-              "keywords": "정보 없음",
-              "hashtags": "정보 없음",
-              "category": "분석 실패",
-              "source_url": "정보 없음",
-              "media_urls": "정보 없음"
+              "relatedMemes": [],
+              "tags": ["분석실패", "오류"]
             }
             """, title.replace("\"", "\\\""));
     }
