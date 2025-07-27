@@ -46,45 +46,22 @@ public class AiMemeAnalyzer {
             
             # JSON Structure
             {
-              "name": "밈의 공식 명칭 (String)",
-              "meaning": "밈의 핵심 의미를 1~3 문장으로 설명하되, 어떤 감정이나 상황을 나타내는지 **뉘앙스를 포함하여 서술**해주세요. (String)",
-              "usageExamples": [
-                "단순한 문장 나열이 아닌, **어떤 상황에서 사용하면 재미있는지 맥락이 드러나는** 예시를 2~3개 작성해주세요. (String)",
-                "예시 2",
-                "예시 3"
-              ],
-              "origin": "최초 출처와 함께, **어떤 과정과 계기를 통해 유행하게 되었는지 간략한 스토리를 포함**하여 서술해주세요. (String)",
-              "relatedMemes": [
-                "관련/파생 밈 이름 (String)",
-              ],
-              "tags": [
-                "밈의 특징과 카테고리를 잘 나타내는 키워드 5개 이상 (String)",
-                "키워드2",
-                "키워드3"
-              ]
+              "title": "밈의 제목 (String)",
+              "origin": "밈의 기원과 유래를 상세히 설명해주세요. (String) (최대 300자 이내)",
+              "usageContext": "밈이 언제, 어떤 상황에서 사용되는지 맥락을 자세히 설명해주세요. (String) (최대 300자 이내)",
+              "trendPeriod": "밈이 유행한 시기 (예: 2023,2024, 2000 와 같이 YYYY 형식으로 작성)",
+              "imgUrl": "관련 이미지 URL이 있다면 포함, 없으면 null (String)",
+              "hashtags": "밈과 관련된 해시태그들을 JSON 배열 형태의 문자열로 저장 (String)"
             }
             
             # Example (for '무야호' meme)
             {
-              "name": "무야호",
-              "meaning": "단순한 기쁨을 넘어, 예상치 못한 행운이나 큰 성취감에 벅차올라 터져 나오는 순수한 환희를 표현합니다. 약간의 어설픔이 더해져 유머러스한 느낌을 줍니다.",
-              "usageExamples": [
-                "월급날 통장 보고 소리 질렀다... 이것이 바로 '무야호'의 심정.",
-                "친구가 노래방에서 최고점 찍고 '무야호' 외치는데 너무 웃겼어.",
-                "밤새 코딩한 거 에러 없이 돌아갈 때의 그 기분? 무야호 그 자체."
-              ],
-              "origin": "2010년 MBC <무한도전> '알래스카' 편에서 한 어르신이 '무한도전'을 '무야호'로 잘못 외친 장면에서 시작됐습니다. 이 순수한 외침이 10년이 지난 후 유튜브 알고리즘을 통해 재발견되어 폭발적으로 유행했습니다.",
-              "relatedMemes": [
-                  "그만큼 신나시다는 거지"
-              ],
-              "tags": [
-                "무한도전",
-                "정형돈",
-                "알래스카",
-                "신남",
-                "환호",
-                "감탄사"
-              ]
+              "title": "무야호",
+              "origin": "2010년 MBC 무한도전 알래스카 편에서 한 어르신이 '무한도전'을 '무야호'로 잘못 외친 장면에서 시작됐습니다. 이 순수한 외침이 10년이 지난 후 유튜브 알고리즘을 통해 재발견되어 폭발적으로 유행했습니다.",
+              "usageContext": "예상치 못한 행운이나 큰 성취감에 벅차올라 터져 나오는 순수한 환희를 표현할 때 사용합니다. 월급날 통장을 확인했을 때, 시험 성적이 예상보다 좋을 때, 코딩한 프로그램이 에러 없이 실행될 때 등 기쁨과 놀라움이 섞인 상황에서 사용됩니다.",
+              "trendPeriod": "2020년대",
+              "imgUrl": null,
+              "hashtags": "[\"무한도전\", \"무야호\", \"환호\", \"감탄사\", \"알래스카\"]"
             }
             
             분석할 내용:
@@ -100,7 +77,6 @@ public class AiMemeAnalyzer {
             3. 시기 정보는 가능한 구체적으로 작성하세요
             4. 관련 키워드는 검색 최적화를 고려하여 포함하세요
             5. 불확실한 정보는 추측하지 말고 "정보 없음"으로 표기하세요
-            6. 이미지 또는 영상으로 대표되는 밈인지 여부를 명확히 구분하고 표기하세요
     """;
 
     /**
@@ -120,7 +96,7 @@ public class AiMemeAnalyzer {
             StringBuilder csvContent = new StringBuilder();
             
             // CSV 헤더 작성 (새로운 JSON 구조에 맞게)
-            csvContent.append("name,meaning,usageExamples,origin,relatedMemes,tags\n");
+            csvContent.append("title,origin,usageContext,trendPeriod,imgUrl,hashtags\n");
 
             int successCount = 0;
             int failCount = 0;
@@ -136,12 +112,12 @@ public class AiMemeAnalyzer {
                         JsonNode node = mapper.readTree(jsonContent);
 
                         String[] fields = {
-                            escapeCSV(mapFieldValue(node, "name", "title")),
-                            escapeCSV(mapFieldValue(node, "meaning", "description")),
-                            escapeCSV("정보 없음"), // usageExamples - 기존 데이터에 없음
+                            escapeCSV(mapFieldValue(node, "title", "name")),
                             escapeCSV(getFieldValue(node, "origin")),
-                            escapeCSV(mapFieldValue(node, "relatedMemes", "related_memes")),
-                            escapeCSV(mapArrayFieldValue(node, "tags", "keywords", "hashtags"))
+                            escapeCSV(mapFieldValue(node, "usageContext", "meaning")),
+                            escapeCSV(getFieldValue(node, "trendPeriod")),
+                            escapeCSV(getFieldValue(node, "imgUrl")),
+                            escapeCSV(getFieldValue(node, "hashtags"))
                         };
 
                         csvContent.append(String.join(",", fields)).append("\n");
@@ -286,7 +262,7 @@ public class AiMemeAnalyzer {
             StringBuilder csvContent = new StringBuilder();
 
             // CSV 헤더 작성 (새로운 JSON 구조에 맞게)
-            csvContent.append("name,meaning,usageExamples,origin,relatedMemes,tags\n");
+            csvContent.append("title,origin,usageContext,trendPeriod,imgUrl,hashtags\n");
 
             // 각 JSON 결과를 CSV 로우로 변환
             for (String jsonResult : jsonResults) {
@@ -294,12 +270,12 @@ public class AiMemeAnalyzer {
                     JsonNode node = mapper.readTree(jsonResult);
 
                     String[] fields = {
-                        escapeCSV(getFieldValue(node, "name")),
-                        escapeCSV(getFieldValue(node, "meaning")),
-                        escapeCSV(getArrayFieldAsString(node, "usageExamples")),
+                        escapeCSV(getFieldValue(node, "title")),
                         escapeCSV(getFieldValue(node, "origin")),
-                        escapeCSV(getArrayFieldAsString(node, "relatedMemes")),
-                        escapeCSV(getArrayFieldAsString(node, "tags"))
+                        escapeCSV(getFieldValue(node, "usageContext")),
+                        escapeCSV(getFieldValue(node, "trendPeriod")),
+                        escapeCSV(getFieldValue(node, "imgUrl")),
+                        escapeCSV(getFieldValue(node, "hashtags"))
                     };
 
                     csvContent.append(String.join(",", fields)).append("\n");
@@ -517,12 +493,12 @@ public class AiMemeAnalyzer {
         
         return String.format("""
             {
-              "name": "%s",
-              "meaning": "API 호출 실패로 인해 자동 분석을 수행할 수 없었습니다.",
-              "usageExamples": [],
-              "origin": "정보 없음",
-              "relatedMemes": [],
-              "tags": ["분석실패", "오류"]
+              "title": "%s",
+              "origin": "API 호출 실패로 인해 자동 분석을 수행할 수 없었습니다.",
+              "usageContext": "정보 없음",
+              "trendPeriod": "정보 없음",
+              "imgUrl": null,
+              "hashtags": "[\"분석실패\", \"오류\"]"
             }
             """, title.replace("\"", "\\\""));
     }
