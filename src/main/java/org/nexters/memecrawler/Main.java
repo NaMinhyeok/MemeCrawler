@@ -1,6 +1,7 @@
 package org.nexters.memecrawler;
 
-import org.nexters.memecrawler.crawler.MemeCrawler;
+import org.nexters.memecrawler.crawler.BasicMemeCrawler;
+import org.nexters.memecrawler.config.CrawlerConfig;
 
 import java.util.List;
 import java.util.Map;
@@ -8,15 +9,13 @@ import java.util.ArrayList;
 
 public class Main {
     public static void main(String[] args) {
-        MemeCrawler crawler = new MemeCrawler();
+        BasicMemeCrawler crawler = new BasicMemeCrawler();
         
         try {
             System.out.println("Starting MemeCrawler...");
             
-            // 1단계: 메인 페이지에서 하이퍼링크 크롤링
             List<String> memeLinks = crawler.crawlMemeLinks();
             
-            // 2단계: 각 링크의 원시 데이터 크롤링
             List<Map<String, Object>> rawDataList = new ArrayList<>();
             System.out.println("Starting to crawl " + memeLinks.size() + " meme pages...");
             
@@ -31,8 +30,7 @@ public class Main {
                 }
             }
             
-            // 3단계: 원시 데이터를 JSON으로 저장
-            crawler.saveRawDataToJson(rawDataList, "raw_meme_data.json");
+            crawler.saveRawDataToJson(rawDataList, CrawlerConfig.RAW_DATA_FILE);
             
             System.out.println("Crawling completed successfully!");
             System.out.println("Next step: Use Google Vertex AI to analyze and structure the data");
